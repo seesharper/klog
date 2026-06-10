@@ -22,8 +22,8 @@ to it (until you pass a different one). Falls back to `default` if none was ever
 
 ```sh
 klog                 # use the remembered namespace (or "default")
-klog -n solsiden-dev # use, and remember, this namespace
-klog solsiden-dev    # same, positional form
+klog -n my-namespace # use, and remember, this namespace
+klog my-namespace    # same, positional form
 klog --help
 ```
 
