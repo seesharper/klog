@@ -1,5 +1,7 @@
 # klog
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Quickly pick a Kubernetes service and follow its logs, using `kubectl` under the hood.
 
 ![klog demo](assets/demo.gif)
