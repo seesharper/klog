@@ -20,6 +20,29 @@ to it (until you pass a different one). Falls back to `default` if none was ever
 - `kubectl` (configured with a reachable cluster)
 - `fzf` (provides the arrow-key picker) — `brew install fzf`
 
+## Installation
+
+Clone the repo and symlink the `klog` script into a directory on your `PATH`:
+
+```sh
+git clone https://github.com/seesharper/klog.git
+cd klog
+ln -s "$PWD/klog" /usr/local/bin/klog   # or /opt/homebrew/bin on Apple Silicon
+```
+
+Using a symlink means a `git pull` updates the installed command automatically.
+Alternatively, just copy the single script anywhere on your `PATH`:
+
+```sh
+cp klog /usr/local/bin/klog && chmod +x /usr/local/bin/klog
+```
+
+Verify it's installed:
+
+```sh
+klog --help
+```
+
 ## Usage
 
 ```sh
@@ -31,14 +54,6 @@ klog --help
 
 The most-recently-used service is highlighted at the top, so pressing **Enter**
 immediately re-opens your last service's logs.
-
-## Install
-
-Put it on your `PATH`, e.g.:
-
-```sh
-ln -s "$PWD/klog" /usr/local/bin/klog
-```
 
 ## Notes
 
