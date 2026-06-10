@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+#
+# klog — select a Kubernetes service and follow its logs.
+#
+# Lists services in a namespace, ordered most-recently-used first (the last
+# service you viewed is the default selection). Pick one with the up/down
+# arrow keys, then it runs:
+#
+#   kubectl logs --all-pods -n <namespace> services/<service> -f
+#
+# The namespace is remembered between runs: pass -n once and subsequent runs
+# default to it (until you pass a different one). Falls back to "default".
+#
+# Usage:
+#   klog                # use the remembered namespace (or "default")
+#   klog -n <namespace> # use (and remember) this namespace
+#   klog <namespace>    # same, positional form
+#   klog -h | --help
+
+set -euo pipefail
+
+HISTORY_FILE="${KLOG_HISTORY_FILE:-$HOME/.klog_history}"
+NAMESPACE_FILE="${KLOG_NAMESPACE_FILE:-$HOME/.klog_namespace}"
+
+usage() {
+  sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+# --- parse args ---------------------------------------------------------------
+NAMESPACE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help) usage 0 ;;
+    -n|--namespace)
+      [[ $# -ge 2 ]] || { echo "klog: $1 requires a value" >&2; exit 2; }
+      NAMESPACE="$2"; shift 2 ;;
+    -*) echo "klog: unknown option: $1" >&2; usage 2 ;;
+    *)
+      [[ -z "$NAMESPACE" ]] || { echo "klog: unexpected argument: $1" >&2; usage 2; }
+      NAMESPACE="$1"; shift ;;
+  esac
+done
+
+# --- dependencies -------------------------------------------------------------
+for bin in kubectl fzf; do
+  command -v "$bin" >/dev/null 2>&1 || { echo "klog: '$bin' is required but not found in PATH" >&2; exit 1; }
+done
+
+# --- resolve namespace (remember the last one used) ---------------------------
+if [[ -z "$NAMESPACE" ]]; then
+  [[ -s "$NAMESPACE_FILE" ]] && NAMESPACE="$(head -n 1 "$NAMESPACE_FILE")"
+  NAMESPACE="${NAMESPACE:-default}"
+fi
+printf '%s\n' "$NAMESPACE" > "$NAMESPACE_FILE"
+
+# --- gather services ----------------------------------------------------------
+# (bash 3.2 on macOS has no `mapfile`/associative arrays, so we stick to
+# temp files + awk for the ordering below.)
+SERVICES_FILE="$(mktemp)"
+trap 'rm -f "$SERVICES_FILE" "${TMP_HIST:-}"' EXIT
+
+kubectl get services -n "$NAMESPACE" \
+  --output 'jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+  | grep -v '^$' > "$SERVICES_FILE" || true
+
+if [[ ! -s "$SERVICES_FILE" ]]; then
+  echo "klog: no services found in namespace '$NAMESPACE'" >&2
+  exit 1
+fi
+
+# --- order: most-recently-used first, then the rest alphabetically ------------
+# History lines are "<namespace>\t<service>", most-recent-first. awk reads the
+# services (file 1) then history (file 2), keeps only history entries for the
+# current namespace whose service still exists, then appends the rest sorted.
+HIST_INPUT="/dev/null"
+[[ -f "$HISTORY_FILE" ]] && HIST_INPUT="$HISTORY_FILE"
+
+ORDERED="$(awk -v ns="$NAMESPACE" '
+  FNR==NR { if ($0 != "") { exists[$0]=1; svc[++n]=$0 }; next }
+  { if (NF >= 2 && $1 == ns && ($2 in exists) && !($2 in printed)) { print $2; printed[$2]=1 } }
+  END {
+    nrem=0
+    for (i=1; i<=n; i++) if (!(svc[i] in printed)) rem[++nrem]=svc[i]
+    for (i=1; i<=nrem; i++) for (j=i+1; j<=nrem; j++) if (rem[j] < rem[i]) { t=rem[i]; rem[i]=rem[j]; rem[j]=t }
+    for (i=1; i<=nrem; i++) print rem[i]
+  }
+' "$SERVICES_FILE" "$HIST_INPUT")"
+
+# --- pick a service -----------------------------------------------------------
+# The first entry (most recently used) is highlighted by default, so pressing
+# Enter immediately reuses your last service.
+SELECTED="$(printf '%s\n' "$ORDERED" | fzf \
+  --no-sort \
+  --height=40% \
+  --reverse \
+  --prompt="logs › " \
+  --header="namespace: $NAMESPACE  (↑/↓ to select, Enter to confirm)")" || {
+    echo "klog: nothing selected" >&2
+    exit 130
+  }
+
+[[ -n "$SELECTED" ]] || { echo "klog: nothing selected" >&2; exit 130; }
+
+# --- record in history (most recent first, de-duplicated, per-namespace) ------
+# TMP_HIST is cleaned up by the EXIT trap set near the top.
+ENTRY="$NAMESPACE"$'\t'"$SELECTED"
+TMP_HIST="$(mktemp)"
+{
+  printf '%s\n' "$ENTRY"
+  [[ -f "$HISTORY_FILE" ]] && grep -vxF "$ENTRY" "$HISTORY_FILE" || true
+} > "$TMP_HIST"
+# Keep the history bounded.
+head -n 200 "$TMP_HIST" > "$HISTORY_FILE"
+
+# --- follow logs --------------------------------------------------------------
+echo "› kubectl logs --all-pods -n $NAMESPACE services/$SELECTED -f" >&2
+exec kubectl logs --all-pods -n "$NAMESPACE" "services/$SELECTED" -f
