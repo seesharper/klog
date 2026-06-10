@@ -2,6 +2,8 @@
 
 Quickly pick a Kubernetes service and follow its logs, using `kubectl` under the hood.
 
+![klog demo](assets/demo.gif)
+
 It lists the services in a namespace, ordered **most-recently-used first** (so the
 last service you viewed is the default selection). Choose one with the **↑/↓ arrow
 keys** and press Enter — `klog` then runs:
