@@ -45,3 +45,7 @@ ln -s "$PWD/klog" /usr/local/bin/klog
 - Service usage history is stored per-namespace in `~/.klog_history` (override with
   `KLOG_HISTORY_FILE`), kept de-duplicated, most-recent-first, and capped at 200 entries.
 - Written for the stock macOS bash 3.2 (no `mapfile`/associative arrays needed).
+
+## License
+
+[MIT](LICENSE)
